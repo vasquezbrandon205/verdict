@@ -4,3 +4,4 @@ __pycache__/
 results/
 *.so
 .DS_Store
+verdict_icf.egg-info/

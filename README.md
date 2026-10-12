@@ -35,14 +35,33 @@ The STRICT row matters: one of Ghidra's RANGE "hits" (p02 `0x101270`) lands mid-
 ## Quick start
 
 ```bash
-pip install capstone
+pip install .
 
-# CLI
-python3 verdict_cli.py /bin/ls
+# Analyze a binary (ASCII banner, evidence per target, UNKNOWN taxonomy)
+verdict analyze /bin/ls
+
+# Machine-readable output (banner suppressed, pure JSON)
+verdict analyze /bin/ls --json > report.json
+
+# Only report targets at confidence ≥ 0.9 — the rest become UNKNOWN
+verdict analyze /bin/ls --min-confidence 0.9
+
+# Every UNKNOWN site with its instruction and classification
+verdict analyze /bin/ls --verbose
+
+# The honesty contract this tool operates under
+verdict contract
 
 # API server
-python3 verdict_api.py 8080
+verdict_api.py 8080
 curl -X POST --data-binary @/bin/ls http://localhost:8080/analyze
+```
+
+Or without installing:
+
+```bash
+pip install capstone
+python3 verdict_cli.py analyze /bin/ls
 ```
 
 ## Architecture

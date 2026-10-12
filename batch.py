@@ -45,8 +45,10 @@ def analyze(binary_path, xmod_resolver=None, main_df=None):
                 site, df, xmod_resolver, main_df, binary_path
             )
         func = CFG.func_containing(site, sorted(entries))
+        insn = cfg.insns[site]
         results.append({'site_addr': hex(site), 'func': hex(func) if func else None,
                         'kinds': [kind],
+                        'mnemonic': insn.mnemonic, 'op_str': insn.op_str,
                         'targets': [hex(t) for t in sorted(targets)],
                         'confidence': conf, 'evidence': ev})
     return {'binary': os.path.basename(binary_path), 'results': results}

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "verdict-icf"
+version = "0.9.0"
+description = "VERDICT — VERified InDirect Call Targets: evidence-first indirect control-flow recovery"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Brandon Manuel Vasquez" }]
+keywords = ["binary-analysis", "reverse-engineering", "indirect-calls", "control-flow"]
+dependencies = ["capstone>=5.0"]
+
+[project.scripts]
+verdict = "verdict_cli:main"
+
+[project.urls]
+Homepage = "https://github.com/vasquezbrandon205/verdict"
+
+[tool.setuptools]
+py-modules = [
+    "verdict_cli",
+    "batch",
+    "foundation",
+    "funcs",
+    "dataflow",
+    "vtable",
+    "simd",
+    "interproc",
+    "xmod",
+    "verdict_api",
+    "verdict_score",
+    "verdict_score_strict",
+    "ghidra_verdict_import",
+    "gen_adversarial",
+]
