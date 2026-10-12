@@ -1,0 +1,50 @@
+{
+ "binary": "p03_O3_stripped",
+ "results": [
+  {
+   "site_addr": "0x10b9",
+   "func": "0x1080",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x11e0",
+    "0x1220"
+   ],
+   "confidence": 0.85,
+   "evidence": "DATAFLOW"
+  },
+  {
+   "site_addr": "0x10cc",
+   "func": "0x1080",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x1260"
+   ],
+   "confidence": 0.85,
+   "evidence": "DATAFLOW"
+  },
+  {
+   "site_addr": "0x113f",
+   "func": "0x1120",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  },
+  {
+   "site_addr": "0x1180",
+   "func": "0x1120",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  }
+ ]
+}

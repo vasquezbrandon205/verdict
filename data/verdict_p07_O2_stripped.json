@@ -1,0 +1,35 @@
+{
+ "binary": "p07_O2_stripped",
+ "results": [
+  {
+   "site_addr": "0x110f",
+   "func": "0x10ad",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN_MEM"
+  },
+  {
+   "site_addr": "0x11bf",
+   "func": "0x11a0",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  },
+  {
+   "site_addr": "0x1200",
+   "func": "0x11a0",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  }
+ ]
+}

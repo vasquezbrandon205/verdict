@@ -1,0 +1,40 @@
+{
+ "binary": "p02_O2_stripped",
+ "results": [
+  {
+   "site_addr": "0x1111",
+   "func": "0x10a0",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x1220",
+    "0x1250",
+    "0x1280",
+    "0x12b0"
+   ],
+   "confidence": 0.7,
+   "evidence": "SIMD_TABLE"
+  },
+  {
+   "site_addr": "0x117f",
+   "func": "0x1160",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  },
+  {
+   "site_addr": "0x11c0",
+   "func": "0x1160",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  }
+ ]
+}

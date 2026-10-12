@@ -1,0 +1,25 @@
+{
+ "binary": "p05_O2_stripped",
+ "results": [
+  {
+   "site_addr": "0x123f",
+   "func": "0x1220",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  },
+  {
+   "site_addr": "0x1280",
+   "func": "0x1220",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  }
+ ]
+}

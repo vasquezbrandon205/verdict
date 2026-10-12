@@ -1,0 +1,51 @@
+{
+ "binary": "p09_O0_stripped",
+ "results": [
+  {
+   "site_addr": "0x1200",
+   "func": "0x11dc",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x1169",
+    "0x11a3"
+   ],
+   "confidence": 0.7,
+   "evidence": "INTERPROC_PARAM0"
+  },
+  {
+   "site_addr": "0x1243",
+   "func": "0x120a",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x1169",
+    "0x11a3"
+   ],
+   "confidence": 0.7,
+   "evidence": "INTERPROC_PARAM0"
+  },
+  {
+   "site_addr": "0x10cf",
+   "func": "0x10b0",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  },
+  {
+   "site_addr": "0x1110",
+   "func": "0x10b0",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  }
+ ]
+}

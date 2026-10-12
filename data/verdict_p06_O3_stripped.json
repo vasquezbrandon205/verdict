@@ -1,0 +1,25 @@
+{
+ "binary": "p06_O3_stripped",
+ "results": [
+  {
+   "site_addr": "0x118f",
+   "func": "0x1170",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  },
+  {
+   "site_addr": "0x11d0",
+   "func": "0x1170",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  }
+ ]
+}

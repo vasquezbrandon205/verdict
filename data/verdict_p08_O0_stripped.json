@@ -1,0 +1,64 @@
+{
+ "binary": "p08_O0_stripped",
+ "results": [
+  {
+   "site_addr": "0x1289",
+   "func": "0x11e9",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x1380",
+    "0x143a",
+    "0x14a6"
+   ],
+   "confidence": 0.75,
+   "evidence": "VTABLE_SLOT0"
+  },
+  {
+   "site_addr": "0x12a0",
+   "func": "0x11e9",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x13b6",
+    "0x1470"
+   ],
+   "confidence": 0.75,
+   "evidence": "VTABLE_SLOT1"
+  },
+  {
+   "site_addr": "0x12ed",
+   "func": "0x11e9",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x14dc"
+   ],
+   "confidence": 0.75,
+   "evidence": "VTABLE_SLOT4"
+  },
+  {
+   "site_addr": "0x114f",
+   "func": "0x1130",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  },
+  {
+   "site_addr": "0x1190",
+   "func": "0x1130",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  }
+ ]
+}
