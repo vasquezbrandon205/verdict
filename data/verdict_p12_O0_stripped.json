@@ -1,0 +1,38 @@
+{
+ "binary": "p12_O0_stripped",
+ "results": [
+  {
+   "site_addr": "0x122c",
+   "func": "0x11fa",
+   "kinds": [
+    "CALLIND"
+   ],
+   "targets": [
+    "0x1169",
+    "0x119c"
+   ],
+   "confidence": 0.85,
+   "evidence": "DATAFLOW"
+  },
+  {
+   "site_addr": "0x10cf",
+   "func": "0x10b0",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  },
+  {
+   "site_addr": "0x1110",
+   "func": "0x10b0",
+   "kinds": [
+    "BRANCHIND"
+   ],
+   "targets": [],
+   "confidence": null,
+   "evidence": "UNKNOWN"
+  }
+ ]
+}
