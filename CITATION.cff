@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: "VERDICT: Evidence-First Indirect Control Flow Recovery"
+version: 0.9.0
+date-released: 2026-10-11
+url: https://github.com/vasquezbrandon205/verdict
+repository-code: https://github.com/vasquezbrandon205/verdict
+license: MIT
+authors:
+  - family-names: Vasquez
+    given-names: Brandon Manuel
+keywords:
+  - binary-analysis
+  - reverse-engineering
+  - indirect-calls
+  - control-flow-recovery
+  - falsification
+abstract: >
+  Independent binary analysis engine (zero Ghidra dependency: custom ELF
+  loader, Capstone decoder, built-from-scratch CFG) for recovering indirect
+  call targets in stripped, optimized binaries. Kill-aware dataflow, vtable
+  slot analysis, SIMD lane tracking, interprocedural inference, and
+  cross-module resolution -- each producing explicit evidence chains.
+  Zero-false-positive gating with honest UNKNOWN abstention instead of
+  silent misses.

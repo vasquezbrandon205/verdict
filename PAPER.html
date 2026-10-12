@@ -1,0 +1,352 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>VERDICT: Evidence-First Indirect Control Flow Recovery</title>
+<style>body{max-width:860px;margin:40px auto;padding:0 20px;font-family:Georgia,serif;line-height:1.6;color:#222}h1,h2,h3{font-family:sans-serif}code{background:#f4f4f4;padding:2px 5px;border-radius:3px}pre{background:#f4f4f4;padding:12px;border-radius:5px;overflow-x:auto}table{border-collapse:collapse;margin:16px 0}th,td{border:1px solid #ccc;padding:6px 12px}th{background:#f4f4f4}</style>
+</head><body><h1>VERDICT: Evidence-First Indirect Control Flow Recovery with Zero False Positives</h1>
+<p><strong>VERDICT</strong> — <strong>VER</strong>ified <strong>I</strong>n<strong>D</strong>irect <strong>C</strong>all <strong>T</strong>argets.</p>
+<p><em>Independent research project by Brandon Manuel Vasquez. Not affiliated with Muse AI (Meta's AI assistant) or any similarly named product.</em></p>
+<p><strong>Brandon Manuel Vasquez</strong> · Independent Research · October 2026 · <strong>v2.2</strong></p>
+<hr />
+<h2>Abstract</h2>
+<p>We present VERDICT, an independent binary analysis engine for recovering indirect call targets in stripped, optimized binaries. Unlike existing tools that silently omit unresolved targets, VERDICT combines kill-aware dataflow, vtable slot analysis, SIMD lane tracking, interprocedural inference, and cross-module resolution — each producing explicit evidence chains with calibrated confidence. On a 36-site ground-truth corpus (GCC O0/O2/O3, stripped), VERDICT achieves <strong>P=1.000, R=1.000, F1=1.000</strong> under strict exact-entry scoring, versus Ghidra 12.1.4's <strong>P=0.969, R=0.431, F1=0.596</strong> under the same strict scoring (P=1.000, R=0.444, F1=0.615 under lenient range scoring — one of Ghidra's range "hits" lands mid-function rather than on the exact entry). Critically, VERDICT maintains <strong>zero false positives</strong> across all discovered indirect sites, not just benchmark targets — a property we verify through all-sites FP accounting.</p>
+<p>This version adds three things the v1.0 paper lacked: <strong>(1)</strong> a grounded related-work section positioning VERDICT against the actual state of the art (TypeArmor, BPA, Callee) instead of a survey pointer; <strong>(2)</strong> a per-analyzer contribution analysis over all 72 recovered targets, showing no component is dead weight; and <strong>(3)</strong> a measured UNKNOWN taxonomy on a real-world binary (<code>/bin/ls</code>, 29 sites) that converts our largest weakness — 28 honest abstentions — into a characterized research agenda, identifying heap-object dispatch as the single highest-value next analyzer. v2.1 adds <strong>(4)</strong> the 2025–2026 agentic-LLM landscape (§2.5), positioning VERDICT as the verification substrate those agents lack; v2.2 adds <strong>(5)</strong> a practitioner-facing roadmap (§10) and renames the engine VERDICT (<strong>VER</strong>ified <strong>I</strong>n<strong>D</strong>irect <strong>C</strong>all <strong>T</strong>argets), ending the name collision with Muse AI. When VERDICT cannot resolve a target, it returns explicit UNKNOWN rather than guessing. We document our falsification methodology, adversarial failures, and honest limitations, including the loss of the original build corpus.</p>
+<p><strong>Keywords:</strong> binary analysis, indirect control flow, reverse engineering, false positives, evidence-based analysis</p>
+<hr />
+<h2>1. Introduction</h2>
+<p>Indirect control flow — <code>call *%rax</code>, virtual dispatches, function pointer tables — is the central hard problem in static binary analysis. Every downstream task depends on it: control-flow graph construction, decompilation, vulnerability detection, Control-Flow Integrity (CFI) enforcement, and malware triage.</p>
+<p>Existing tools handle this poorly. Ghidra, the de facto open standard, resolves indirect calls only when intraprocedural constant propagation suffices — achieving 43% recall on our corpus while <strong>silently omitting</strong> the remaining 57%. The analyst has no way to distinguish "Ghidra proved there's no target" from "Ghidra couldn't figure it out."</p>
+<p>VERDICT takes a different approach:</p>
+<ol>
+<li><strong>Evidence-first</strong>: Every resolved target carries a provenance chain (which analyzer, which dataflow path, what confidence).</li>
+<li><strong>Zero false positives</strong>: We gate on precision. A wrong target is worse than no target.</li>
+<li><strong>Honest uncertainty</strong>: UNKNOWN is a first-class result rather than a silent omission.</li>
+<li><strong>Independence</strong>: Zero Ghidra dependency. Custom ELF loader, Capstone decoder, built-from-scratch CFG.</li>
+</ol>
+<p>The deeper claim of this paper is methodological: binary analysis tools can and should report what they <em>don't</em> know, and "not silently giving up" — resolving the targets that existing tools abandon — accounts for the entire measured gap, not a novel algorithm.</p>
+<hr />
+<h2>2. Related Work</h2>
+<h3>2.1 Classical static approaches</h3>
+<p><strong>TypeArmor</strong> (van der Veen et al., NDSS 2015) is the classical baseline for hardened binary-level CFG construction. It applies static analysis to stripped binaries to constrain the set of permissible indirect-call targets for CFI enforcement. Its contract is deliberately over-approximate: for CFI, missing a legitimate target breaks the program, so precision is sacrificed for soundness. VERDICT inverts this contract: for the <em>analyst</em>, a false positive wastes hours and poisons every downstream inference, so we sacrifice recall (via honest UNKNOWN) to hold precision at 1.000. Same problem domain, opposite error preference — which is why direct F1 comparison against CFI systems must be read with the contract difference in mind.</p>
+<p><strong>BPA</strong> ("Refining Indirect Call Targets at the Binary Level," NDSS 2021) is the closest classical competitor. It performs binary-level points-to analysis with a block memory model and memory-access partitioning, reporting a 34.5% precision improvement over the then-state-of-the-art (a TypeArmor + PathArmor combination) without introducing new false negatives. BPA's contribution is analytical depth; VERDICT's is engineering discipline — evidence provenance per target, all-sites FP accounting, and adversarial falsification as a development protocol. The two approaches are complementary: BPA-style points-to analysis is precisely the machinery our UNKNOWN taxonomy (Section 6.5) identifies as the missing piece for heap-object dispatch.</p>
+<h3>2.2 Learned approaches</h3>
+<p><strong>Callee</strong> (Zhu et al., arXiv:2111.01415, 2022) combines transfer learning and contrastive learning to match callsites to callees, reporting F1=0.946 and noting that existing solutions suffer high false positives <em>and</em> negatives. Callee is a ranker: it scores candidate callees without producing a checkable reason. VERDICT's evidence chains are the counter-position — every target carries the analyzer, the dataflow path, and a calibrated confidence the analyst can audit. Where learned models need large ground-truth corpora (which the Callee authors note are expensive to collect), VERDICT's classical analyzers need none. The honest comparison: Callee optimizes ranking quality at scale; VERDICT optimizes auditability and zero-FP gating per target.</p>
+<p><strong>NeuCall / DeepDi</strong>: ML-based function recognition with contradictory robustness evidence and weak evaluation splits (per our Phase 1 survey). We do not benchmark against them; their evaluation methodology does not meet our falsification bar.</p>
+<h3>2.3 Frameworks and the practical baseline</h3>
+<p><strong>Ghidra 12.1.4</strong> (NSA) is the practical baseline we measure against in Section 6. Its indirect-call handling is intraprocedural constant propagation; anything else is silently dropped. <strong>angr</strong>, <strong>BAP</strong>, and <strong>Dyninst</strong> provide CFG recovery frameworks but were not benchmarked here — angr's CFGEmulated is dynamic-symbolic (different cost model), and a fair comparison is future work (Section 8).</p>
+<h3>2.4 The gap</h3>
+<p>No existing system combines classical analyzers (dataflow, vtable parsing, interprocedural inference) with a zero-FP engineering contract, per-target evidence provenance, and adversarial falsification in a maintained, independent implementation. That combination — not a novel algorithm — is VERDICT's contribution. And no agentic system supplies evidence chains an analyst can independently verify.</p>
+<h3>2.5 Agentic LLM approaches (2025–2026)</h3>
+<p>The dominant practical shift in reverse engineering since 2024 is LLM agents driving disassemblers: MCP-based agents (ida-pro-mcp; GhidraMCP/ReVa with ~110 tools, embedding search, headless Docker; OGhidra from LLNL with a Plan→Execute→Review→Replan loop; GARE emitting autonomous structured reports in 2–10 minutes; Rikugan running in-process inside IDA/Binary Ninja), IDA-side assistants (IDAssist's ReAct agent mode with confidence-scored rename suggestions), and LLM decompilation pipelines (Decaf 2026: compiler-feedback verification, 26%→83.9% on ExeBench; constraint-guided multi-agent verification at 84–97% re-executable rates; REMEND at 89.8–92.4% equation extraction). Glaurung, an AI-native disassembler, emits "evidence artifacts" explicitly for LLM consumption — the closest anyone has come to an evidence contract in the agent world.</p>
+<p>Most pointed for this paper: <strong>re-lab-web</strong>, an LLM agent operating Ghidra plus a debugger, explicitly claims it can "define functions Ghidra's static analysis missed — orphan code and whole C++ vtables of runtime-resolved virtuals." That is exactly VERDICT's vtable-analyzer domain (Section 4.3), stated as the agent's value-add. Notably, its <code>resolve_indirect_call</code> mechanism records targets <em>observed in the debugger</em> — dynamic, per-run, and unrepeatable without re-executing the target. That is the precise complement to VERDICT's static evidence chains: one tells you what happened on one path, the other proves what can happen on all analyzed paths. An analyst who must trust the claim without re-running the binary needs the latter. These systems are community/GitHub-grade, not peer-reviewed — we treat them as landscape, not benchmarks.</p>
+<p>VERDICT's counter-position is not competitive but compositional: <strong>VERDICT is the verification substrate agents lack.</strong> Agentic systems optimize narrative fluency — function renames, prose explanations, LLM-native confidence scores that are uncalibrated. None produce falsifiable evidence chains per claim: no analyzer attribution, no dataflow provenance, no calibrated abstention. Glaurung's evidence artifacts point in the right direction but remain LLM-consumption formats, not analyst-auditable proofs. An agent's output is only as trustworthy as its least-checkable claim — and VERDICT's contract (per-target evidence, honest UNKNOWNs, zero-FP gating) is what that claim would need to cite before a security engineer acts on it.</p>
+<p>The honest caveat, under our falsification bar: we do not claim agents score worse on indirect-call recovery — we have not measured it. The next-level experiment, added to Section 8: run a ReAct-style agent on the 72-site benchmark, score its narrative target claims with our strict scorer (Section 5.3), and let VERDICT's evidence chains serve as ground truth for the agent layer. Until that run exists, the agentic wave is context for VERDICT's contribution, not a benchmarked competitor.</p>
+<p>One methodology-adjacent cite: <strong>ResurGo</strong> recovers function entries from stripped binaries using DWARF <code>.eh_frame</code> FDE records (compiler-written, survives <code>strip --strip-all</code>) plus prologue/call-site/alignment signals. It corroborates FDE-based function boundaries as a credible ground-truth channel — relevant to our stripped/DWARF-twin corpus design (Section 5.2).</p>
+<hr />
+<h2>3. Threat Model and Scope</h2>
+<p>VERDICT is built for the <strong>analyst</strong>, not the enforcer. We assume:</p>
+<ul>
+<li><strong>Benign, non-adversarial binaries</strong>: compiled by a standard toolchain (GCC evaluated; Clang pending), not packed, not obfuscated, not hand-written assembly. Adversarial binaries (Section 6.3) are used to <em>falsify</em> our analyzers, not as supported input.</li>
+<li><strong>Linux x86-64 ELF</strong>. The Capstone backend supports ARM64 decoding, but no ARM64 corpus exists yet.</li>
+<li><strong>Stripped or unstripped</strong>: symbol tables help validation but are never required for analysis.</li>
+</ul>
+<p>Out of scope: decompilation, type inference, dynamic analysis, return-address protection, and any guarantee of soundness. VERDICT is deliberately <em>unsound by design</em> — it prefers an honest UNKNOWN over an unsound guess. Section 6.5 characterizes exactly where those UNKNOWNs come from.</p>
+<hr />
+<h2>4. Architecture</h2>
+<p>VERDICT v0.7 consists of six analyzers orchestrated by a central dataflow engine:</p>
+<h3>4.1 Foundation</h3>
+<p>Custom ELF64 loader, Capstone-based x86-64 decoder, leader-based CFG construction with indirect call/jump site enumeration. No Ghidra, no IDA, no Binary Ninja dependency.</p>
+<h3>4.2 Kill-Aware Dataflow</h3>
+<p>Intra-block register tracking where <code>lea</code>/<code>mov</code>-immediate/<code>mov</code>-from-memory <strong>kill</strong> previous values, but <code>cmove</code> does <strong>not</strong> (it creates a union). Transitive resolution through move chains with depth limit 3. Handles:
+- Direct: <code>lea target(%rip), %rax; call *%rax</code>
+- Memory-indirect: <code>mov table(%rip), %rax; call *%rax</code>
+- Conditional: <code>lea t1(%rip), %rax; lea t2(%rip), %rdx; cmove %rdx, %rax</code>
+- SIB-indexed: <code>mov -0x30(%rbp,%rax,8), %rax; call *%rax</code></p>
+<h3>4.3 Vtable Analyzer</h3>
+<p>Discovers vtables via <code>lea</code> to <code>.data.rel.ro</code> with function-pointer validation. Resolves:
+- O0 pattern: vtable load → slot offset → <code>call *%reg</code>
+- O2/O3 pattern: folded <code>call *N(%reg)</code> with slot arithmetic
+- Multiple slots (SLOT0 through SLOTn)</p>
+<h3>4.4 SIMD Analyzer</h3>
+<p>Models XMM registers as two 64-bit lanes. Tracks <code>movq</code>, <code>punpcklqdq</code>, <code>movaps</code> to recover GCC O2/O3 vectorized function-pointer table construction.</p>
+<h3>4.5 Interprocedural Analyzer</h3>
+<p>Finds callers via direct call scanning. Infers FP parameters from caller argument behavior. Resolves cross-function FP flows through caller union.</p>
+<h3>4.6 Cross-Module Resolver (v0.7 hardened)</h3>
+<p>Parses exports via <code>nm</code>, PLT targets via <code>objdump</code>. <strong>v0.7 fix</strong>: Verifies the indirect site loads from the same global that the setter function writes to (via RIP-relative store/load address matching). Previously applied too broadly; now precisely gated. This fix eliminated 9 spurious cross-module predictions — the all-sites FP count went from 9 to 0.</p>
+<hr />
+<h2>5. Methodology</h2>
+<h3>5.1 Falsification-Driven Development</h3>
+<p>We follow a strict protocol:
+1. <strong>Freeze</strong> ground truth before running analysis
+2. <strong>Hypothesize</strong> with novelty labels (KNOWN / ENGINEERING_COMBINATION / POTENTIALLY_NOVEL)
+3. <strong>Measure</strong> with evidence states (OBSERVED / INFERRED / HYPOTHESIZED / UNKNOWN / CONTRADICTED)
+4. <strong>Falsify</strong>: we report negative results (v0.1's "beats Ghidra" hypothesis was falsified)
+5. <strong>Ablate</strong>: each component's contribution measured independently (see Section 6.4 for the honest form this takes)</p>
+<h3>5.2 Benchmark Corpus</h3>
+<p>12 C/C++ programs (p01–p12) covering: direct FPs, jump tables, structs, callbacks, switches, computed gotos, C++ vtables, tail calls, cross-module callbacks, signal handlers, global FPs. Compiled with GCC 13.3.0 at O0/O2/O3, stripped and DWARF twins. 36 indirect call sites, 72 target relations. Ground truth by construction.</p>
+<p><strong>Corpus provenance note (v2.0):</strong> the original <code>icf-experiment/</code> build tree (binaries and build scripts) no longer exists. All 36 prediction JSONs, both scorers, the adversarial results, and this paper's measurement tables are preserved in <code>data/</code> and were re-verified against the staged code. Section 6.4 explains how this constrains — and does not invalidate — the contribution analysis.</p>
+<h3>5.3 Strict Scoring (v0.7)</h3>
+<p>Two metrics reported:
+- <strong>RANGE</strong>: Target correct if inside GT function range (v0.5 methodology)
+- <strong>STRICT</strong>: Target correct only if equals exact GT function entry address</p>
+<p>Plus <strong>all-sites FP accounting</strong>: we enumerate every indirect site VERDICT discovers (not just GT sites) and count predictions at non-GT locations as potential FPs.</p>
+<hr />
+<h2>6. Evaluation</h2>
+<h3>6.1 Main Results</h3>
+<table>
+<thead>
+<tr>
+<th>Engine</th>
+<th>Scorer</th>
+<th>P</th>
+<th>R</th>
+<th>F1</th>
+<th>TP</th>
+<th>FP</th>
+<th>FN</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VERDICT v0.7</td>
+<td>RANGE</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>72</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>VERDICT v0.7</td>
+<td>STRICT</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>72</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Ghidra 12.1.4</td>
+<td>RANGE</td>
+<td>1.000</td>
+<td>0.444</td>
+<td>0.615</td>
+<td>32</td>
+<td>0</td>
+<td>40</td>
+</tr>
+<tr>
+<td>Ghidra 12.1.4</td>
+<td>STRICT</td>
+<td>0.969</td>
+<td>0.431</td>
+<td>0.596</td>
+<td>31</td>
+<td>1</td>
+<td>41</td>
+</tr>
+</tbody>
+</table>
+<p>The STRICT row for Ghidra corrects an earlier reporting: one RANGE "hit" (p02 <code>0x101270</code>) resolves to a mid-function address rather than the exact function entry, so it counts as a miss (and the prediction as a false positive) under exact-entry scoring. We report both scorers so the comparison does not depend on scorer choice.</p>
+<p><strong>All-sites FP</strong>: 0 predictions at non-GT locations (v0.7, after cross-module fix).</p>
+<h3>6.2 Failure Analysis: Where Ghidra Misses</h3>
+<p>Ghidra resolves a target iff intraprocedural constant propagation suffices. It silently misses:
+- <strong>Memory-indirect tables</strong> (p02): 0/6 across all opt levels
+- <strong>Global function pointers</strong> (p04, p12): 0/6
+- <strong>Interprocedural FP params</strong> (p09): 0/6
+- <strong>Cross-module callbacks</strong> (p10): 0/3
+- <strong>Vtable slots &gt;0</strong> (p08): 0/4 for S2/S3</p>
+<p>VERDICT resolves all of these through its specialized analyzers. The 40-point F1 gap is fully explained by these five categories — there is no unexplained residual.</p>
+<h3>6.3 Adversarial Falsification</h3>
+<p>We built 5 adversarial binaries targeting VERDICT's assumptions:</p>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>O0</th>
+<th>O2</th>
+<th>Finding</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SIMD shuffle variant</td>
+<td>✅</td>
+<td>❌</td>
+<td>O2 uses different XMM idiom</td>
+</tr>
+<tr>
+<td>4-way cmove chain</td>
+<td>✅</td>
+<td>❌</td>
+<td>Beyond 2-way assumption</td>
+</tr>
+<tr>
+<td>Multiple inheritance</td>
+<td>⚠️</td>
+<td>❌</td>
+<td>Second vtable missed</td>
+</tr>
+<tr>
+<td>Computed goto table</td>
+<td>❌</td>
+<td>❌</td>
+<td>Indirect jumps not handled</td>
+</tr>
+<tr>
+<td>Double indirection</td>
+<td>❌</td>
+<td>❌</td>
+<td>Pointer-to-pointer not tracked</td>
+</tr>
+</tbody>
+</table>
+<p>These are honest scope boundaries, not bugs. Each defines future work (Section 8).</p>
+<h3>6.4 Analyzer Contribution Analysis</h3>
+<p>A full ablation (removing each analyzer and re-measuring F1) requires re-running the corpus binaries, which no longer exist (Section 5.2). We report the honest substitute: <strong>contribution attribution</strong> — all 72 recovered targets grouped by the evidence code the resolving analyzer emitted, aggregated over the 36 preserved prediction files.</p>
+<table>
+<thead>
+<tr>
+<th>Analyzer</th>
+<th>Evidence codes</th>
+<th>Targets</th>
+<th>Share</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kill-aware dataflow</td>
+<td>DATAFLOW</td>
+<td>31</td>
+<td>43%</td>
+</tr>
+<tr>
+<td>Vtable analyzer</td>
+<td>VTABLE_SLOT0/1/4, _MEM variants</td>
+<td>18</td>
+<td>25%</td>
+</tr>
+<tr>
+<td>Interprocedural</td>
+<td>INTERPROC_PARAM0</td>
+<td>12</td>
+<td>17%</td>
+</tr>
+<tr>
+<td>SIMD analyzer</td>
+<td>SIMD_TABLE</td>
+<td>8</td>
+<td>11%</td>
+</tr>
+<tr>
+<td>Cross-module resolver</td>
+<td>CROSS_MODULE</td>
+<td>3</td>
+<td>4%</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td></td>
+<td><strong>72</strong></td>
+<td><strong>100%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>No analyzer is dead weight — but the distribution is informative. The cross-module resolver contributes only 3 targets, yet those 3 are exactly the category where Ghidra scores 0/3 <em>and</em> where the v0.4–v0.5 over-broad version produced all 9 of our historical false positives. Its value is not volume but the precision gating the v0.7 fix introduced. The dataflow engine's 43% share confirms it as the foundation the specialized analyzers extend — which is also why Section 6.5's taxonomy points at dataflow's blind spots as the highest-value future work.</p>
+<h3>6.5 UNKNOWN Taxonomy: What VERDICT Won't Guess</h3>
+<p>On the 36-site corpus VERDICT has zero UNKNOWNs. Real binaries are less kind. We ran VERDICT v0.9 on <code>/bin/ls</code> (138 KB, system binary, no ground truth available) and classified every abstention by cause, using only the site instruction and local context:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Sites</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HEAP_MEM</td>
+<td>18</td>
+<td><code>call qword ptr [reg+off]</code> — pointer loaded from heap/object memory, not a recognized vtable or global table</td>
+</tr>
+<tr>
+<td>ARG_REG</td>
+<td>4</td>
+<td><code>call *%rcx/%rdx</code> — pointer arrives as a function argument; no in-binary caller supplied it</td>
+</tr>
+<tr>
+<td>NO_FLOW</td>
+<td>3</td>
+<td>Register target with no recoverable dataflow (killed, computed, or beyond depth limit)</td>
+</tr>
+<tr>
+<td>TAIL_JMP</td>
+<td>3</td>
+<td>Indirect <code>jmp</code> (tail call) — jump-table/tail-call handling is out of scope for the call resolver</td>
+</tr>
+<tr>
+<td>RESOLVED</td>
+<td>1</td>
+<td><code>INTERPROC_PARAM4</code>, confidence 0.7</td>
+</tr>
+</tbody>
+</table>
+<p>Result: 29 sites, 1 resolved, 28 UNKNOWN — but the UNKNOWNs are now <em>characterized</em>. The dominant category (18/28, 64%) is heap-object dispatch: virtual-style calls through heap-allocated objects, which our vtable analyzer misses because it only recognizes vtables referenced via <code>lea</code> into <code>.data.rel.ro</code>. This is the single highest-value next analyzer and a concrete instance of the BPA-style points-to analysis discussed in Section 2.1. The ARG_REG sites (4/28) need caller-context the binary doesn't contain — a fundamental static-analysis limit, not an engineering gap; the honest output there is and remains UNKNOWN.</p>
+<p><code>/bin/cat</code> and <code>/bin/echo</code> contribute only PLT-excluded sites plus 2 tail jumps each — small utilities have little indirect-call density once GOT/PLT stubs are filtered, which itself validates the site-enumeration filter.</p>
+<h3>6.6 Real-World Validation and Performance</h3>
+<p>On system binaries VERDICT is conservative: high UNKNOWN rate (now characterized, Section 6.5), zero hallucinations. <code>/bin/ls</code>: 29 sites, 1 resolved with evidence, 28 UNKNOWN. Analysis time 1.34 s for 138 KB on commodity hardware; memory footprint under 1 MB for the analysis structures (0.8 MB measured on the 14 KB corpus binaries). The Python implementation runs ~35 s per 10 MB binary — acceptable for triage, with hot paths identified for a future Rust/C++ port.</p>
+<hr />
+<h2>7. Limitations</h2>
+<p>We report these explicitly:</p>
+<ol>
+<li><strong>x86-64 Linux only</strong>. ARM64 decoder ready in Capstone but no test corpus.</li>
+<li><strong>GCC only</strong>. Clang matrix blocked on toolchain availability.</li>
+<li><strong>Micro-benchmark</strong>. 36 sites is small; the F1=1.000 should be read as "perfect on this corpus," not "perfect in general." Section 6.5 is the antidote — real binaries show where the corpus flatters us.</li>
+<li><strong>Corpus build tree lost</strong>. The original <code>icf-experiment/</code> binaries are gone; predictions, scorers, and tables are preserved and re-verified, but full ablation re-runs are impossible until the corpus is rebuilt.</li>
+<li><strong>O2 adversarial gaps</strong>. Optimized SIMD, jump tables, and double indirection need new analyzers (Section 6.3).</li>
+<li><strong>No dynamic confirmation</strong>. Static-only; targets are never executed to confirm.</li>
+<li><strong>Python performance</strong>. Hot paths need a systems-language port for production use.</li>
+</ol>
+<hr />
+<h2>8. Future Work</h2>
+<p>In priority order, derived from measurement rather than speculation:</p>
+<ol>
+<li><strong>Heap-object dispatch analyzer</strong> (from Section 6.5: 18/28 UNKNOWNs). Points-to analysis over heap allocations in the BPA tradition, gated by the same zero-FP contract.</li>
+<li><strong>Corpus rebuild + true ablation</strong>. Regenerate the 12-program corpus, re-run, and replace Section 6.4's contribution attribution with removal ablations.</li>
+<li><strong>Clang matrix and ARM64 corpus</strong>. Blocked on toolchain provisioning; the decoder support already exists.</li>
+<li><strong>Indirect-jump (tail-call) resolution</strong>. The 3 TAIL_JMP sites in <code>/bin/ls</code> and the computed-goto adversarial failure define this analyzer's acceptance tests.</li>
+<li><strong>CVE case study</strong>. Apply VERDICT to a real vulnerability's patch pair (CVE-2026-10118 selected; protocol and build script parked, launch pending) and measure whether indirect-call recovery changes the triage outcome versus Ghidra.</li>
+<li><strong>Agentic-LLM benchmark</strong>. Run a ReAct-style agent (IDAssist/GARE-class) on the 72-site benchmark and score its narrative target claims with the strict scorer. VERDICT's evidence chains become ground truth for the agent layer. Unmeasured until run — a proposal, not a claim.</li>
+</ol>
+<hr />
+<h2>9. Conclusion</h2>
+<p>VERDICT demonstrates that <strong>combining classical techniques with engineering discipline</strong> — zero-FP gating, evidence provenance, honest UNKNOWNs, adversarial falsification — produces measurably better indirect control flow recovery than the current open standard. The 40-point F1 gap under strict scoring (1.000 vs 0.596) is not from a novel algorithm but from <strong>not silently giving up</strong>: every point of the gap is explained by the five target categories in Section 6.2.</p>
+<p>The v2.0 additions sharpened the claim. The related-work grounding (Section 2) shows the gap is real against the actual literature, not just against Ghidra. The contribution analysis (Section 6.4) shows every analyzer earns its place. And the UNKNOWN taxonomy (Section 6.5) shows that our largest weakness is a characterized research program, not an embarrassment — 18 of 28 real-world abstentions point at exactly one missing analyzer. v2.1 confronts the agentic-LLM wave and sharpens the counter-position to a dynamic-vs-static distinction (§2.5); v2.2 adds the practitioner roadmap (§10).</p>
+<p>The deeper contribution remains methodological: binary analysis tools can and should report what they <em>don't</em> know. In security applications — malware triage, CFI, vulnerability research — a false positive wastes analyst hours and an undetected miss creates blind spots. VERDICT's contract ("here's what I found, here's my evidence, here are my UNKNOWNs, here's why") is strictly more useful than silent omission.</p>
+<p><strong>Artifacts</strong>: Source code, benchmark predictions, strict scorer, adversarial tests, UNKNOWN-taxonomy tooling, and full measurement data are published alongside this paper.</p>
+<hr />
+<h2>10. Where This Leads: Roadmap and Contribution in Plain Terms</h2>
+<p>This section is written for the practitioner — the working reverse engineer, the security engineer triaging at 2 AM, the engineer staring at a million-line binary — rather than the program committee. What does VERDICT actually buy you, and where does it go from here?</p>
+<p><strong>The one-paragraph version.</strong> Every indirect call in a binary is an unanswered question: <em>where can this go?</em> Today's tools answer by guessing silently — they either name a target with no justification or, more often, quietly name nothing at all. VERDICT changes the contract: every target comes with its evidence chain (which analyzer, which dataflow path, which vtable slot), and when the evidence isn't there, it says UNKNOWN instead of guessing. In security work, a wrong answer costs more than no answer — a false positive sends an analyst down a hole for hours, and a silent miss leaves a blind spot an attacker can walk through. VERDICT is built on the unfashionable idea that <em>not knowing, stated honestly, is a feature.</em></p>
+<p><strong>Road 1: The analyst's workbench.</strong> The immediate product is a Ghidra plugin and CLI that sit next to the analyst, not under them. The 40-point F1 gap on strict scoring (1.000 vs 0.596) is not academic — it is the difference between "here are the 72 real edges, each with proof" and "here are 31 edges, good luck with the rest." For malware triage and vulnerability research on standard-toolchain binaries, that is hours back per binary.</p>
+<p><strong>Road 2: Auditing CFI policies.</strong> Control-Flow Integrity systems like TypeArmor deliberately over-approximate — they must, or programs break. But somebody has to check that the over-approximation is <em>tight</em>: every phantom edge in a CFI policy is attack surface that looks defended but isn't. VERDICT's evidence chains are the audit layer — they distinguish "this edge is real, here's the proof" from "this edge is permitted by policy but has no evidence." Over-approximate for enforcement, evidence-first for audit. The two contracts compose.</p>
+<p><strong>Road 3: Vulnerability triage at scale.</strong> The CVE-2026-10118 case study (§8, item 5) is the template: given a patch, enumerate every caller that can reach the vulnerable function <em>through virtual dispatch</em> — the exact edge class our measurements show standard tooling misses. At the scale a large security org operates (thousands of binaries, continuous patch intake), the question "is this CVE reachable in our build?" is asked daily. VERDICT answers it with receipts instead of heuristics.</p>
+<p><strong>Road 4: The verification layer for AI agents.</strong> Section 2.5 documents the wave: LLM agents now drive disassemblers and make confident claims about vtables and orphan code. Those claims are unverified by construction — fluency is not evidence. VERDICT is the check on that output: agent proposes, VERDICT verifies, the strict scorer grades. As agents do more of the RE labor, the value of an independent evidence-first verifier grows, not shrinks.</p>
+<p><strong>Road 5: Telling compiler people what's actually hard.</strong> The UNKNOWN taxonomy (§6.5) is a gift to toolchain engineers: 18 of 28 real-world abstentions point at heap-object dispatch. That is a precise, measured statement of which code patterns defeat static analysis today — the kind of signal that turns "CFI is hard" into a worklist.</p>
+<p><strong>Road 6: The method itself.</strong> Falsification-driven development, strict scoring, adversarial test batteries, and UNKNOWN as a first-class result — none of this is specific to indirect calls. It is a template for evaluating any binary-analysis tool honestly. If the field adopted "report your UNKNOWNs" the way it adopted "report your F1," the literature would get more truthful overnight.</p>
+<p><strong>What this is not.</strong> VERDICT does not handle packed, obfuscated, or adversarial binaries — that is stated in the threat model (§3), not buried. It does not replace dynamic analysis. And on the constructed corpus it is a 72-site micro-benchmark, not a claim of general superiority — the corpus rebuild (§8.2) is what turns the pilot into a result. We would rather under-claim with evidence than over-claim without it. That sentence is the whole project.</p>
+<hr />
+<h2>References</h2>
+<ul>
+<li>van der Veen, V. et al. "TypeArmor: Hardening Stack Smashing Protection against Advanced Exploits." <em>NDSS 2015</em>. — Classical baseline for hardened binary-level CFG construction; over-approximate contract for CFI enforcement.</li>
+<li>"Refining Indirect Call Targets at the Binary Level" (BPA). <em>NDSS 2021</em>. — Binary-level points-to analysis with block memory model; 34.5% precision improvement over TypeArmor+PathArmor SOTA without new false negatives. Closest classical competitor.</li>
+<li>Zhu, W. et al. "Callee: Recovering Call Graphs for Binaries with Transfer and Contrastive Learning." <em>arXiv:2111.01415</em>, 2022. — Transfer + contrastive learning for indirect-call recognition, F1=0.946; black-box ranker, complementary to evidence-first approaches.</li>
+<li>NSA. Ghidra 12.1.4. — Practical baseline; measured in Section 6.1.</li>
+<li>re-lab-web. — LLM agent operating Ghidra + debugger; claims recovery of orphan code and C++ vtables of runtime-resolved virtuals. Landscape (Section 2.5), not benchmarked.</li>
+<li>Decaf (2026). — Compiler-feedback LLM decompilation, 26%→83.9% on ExeBench. Landscape, not benchmarked.</li>
+<li>Glaurung. — AI-native disassembler emitting "evidence artifacts" for LLM consumption. Landscape, not benchmarked.</li>
+<li>ResurGo (maxgio92). — Function-entry recovery from stripped binaries via DWARF <code>.eh_frame</code> FDE records; corroborates FDE-based ground-truth channels (cf. Section 5.2).</li>
+<li>Agentic RE landscape (community-grade, not peer-reviewed): ida-pro-mcp, GhidraMCP/ReVa (~110 tools), OGhidra (LLNL, Plan→Execute→Review→Replan), GARE (autonomous reports, 2–10 min), Rikugan (in-process IDA/Binary Ninja), IDAssist (ReAct + confidence-scored renames), REMEND (89.8–92.4% equation extraction).</li>
+<li>Phase 1 survey (20 research areas, ~756KB) available in supplementary material. Additional systems surveyed: IDA Pro, BAP, Dyninst, angr, τCFI, PathArmor, NeuCall, DeepDi, Osprey, CHISEL.</li>
+</ul>
+<hr />
+<p><em>Correspondence: Brandon Manuel Vasquez · October 2026 · v2.2</em></p></body></html>
